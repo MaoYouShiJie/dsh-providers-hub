@@ -1,0 +1,16 @@
+# 依赖与构建产物（本 fork 不提交这些）
+node_modules/
+pnpm-lock.yaml
+package-lock.json
+
+# 编辑器与系统噪音
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
+
+# 日志与临时文件
+*.log
+*.tmp
