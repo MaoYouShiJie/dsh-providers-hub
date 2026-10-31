@@ -90,6 +90,27 @@ function ensureWrap(selectorRe, selectorLabel, label) {
   applied.push(label)
 }
 
+/**
+ * 仅在规则块**仍是 flex 容器**时才 `ensureWrap`。
+ *
+ * 上游从 2.9 起把 `.dim-jh-metaRow dd.dim-jh-creditValue` 改成
+ * `display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;`
+ * —— 即用**单行省略号截断**避免撑宽卡片。`flex-wrap` 对非 flex 容器被 CSS 忽略，
+ * 此时补上去只是一条无效声明，应跳过并如实记录。
+ */
+function ensureWrapIfFlex(selectorRe, selectorLabel, label) {
+  const re = new RegExp(`(?:^|\\n)${selectorRe.source}`, 'gm')
+  const matches = [...src.matchAll(re)]
+  if (matches.length !== 1) {
+    throw new Error(`${selectorLabel}: 规则块出现 ${matches.length} 次（预期 1）`)
+  }
+  if (!/display:\s*(inline-)?flex/.test(matches[0][0])) {
+    skipped.push(`${label}（上游已改为非 flex 的省略号方案，无需 wrap）`)
+    return
+  }
+  ensureWrap(selectorRe, selectorLabel, label)
+}
+
 // ① 打断 min-content 向上传播：整条 flex 祖先链都必须可收缩
 ensureInRule(/\.dim-jh-page\s*\{[^}]*\}/, '.dim-jh-page', 'min-width: 0;', 'page min-width:0')
 ensureInRule(/\.dim-jh-layout\s*\{[^}]*\}/, '.dim-jh-layout', 'min-width: 0;', 'layout min-width:0')
@@ -98,7 +119,8 @@ ensureInRule(/\.dim-jh-panel\s*\{[^}]*\}/, '.dim-jh-panel', 'min-width: 0;', 'pa
 
 // ② 横向装不下时换行，而不是溢出到容器外
 ensureWrap(/\.dim-jh-accountActions\s*\{[^}]*\}/, '.dim-jh-accountActions', '按钮行 wrap')
-ensureWrap(/\.dim-jh-metaRow\s+dd\.dim-jh-creditValue\s*\{[^}]*\}/, 'creditValue', '积分行 wrap')
+// 积分行只在它仍是 flex 行时才需要 wrap（上游 2.9+ 改用 block + 省略号截断）
+ensureWrapIfFlex(/\.dim-jh-metaRow\s+dd\.dim-jh-creditValue\s*\{[^}]*\}/, 'creditValue', '积分行 wrap')
 
 writeFileSync(target, src, 'utf8')
 
@@ -110,8 +132,13 @@ const checks = [
   ['.dim-jh-panelHost 含 min-width:0', /(?:^|\n)\.dim-jh-panelHost\s*\{[^}]*min-width:\s*0/m.test(out)],
   ['.dim-jh-panel 含 min-width:0', /(?:^|\n)\.dim-jh-panel\s*\{[^}]*min-width:\s*0/m.test(out)],
   ['accountActions 已 wrap', /(?:^|\n)\.dim-jh-accountActions\s*\{[^}]*flex-wrap:\s*wrap/m.test(out)],
-  ['creditValue 已 wrap', /dd\.dim-jh-creditValue\s*\{[^}]*flex-wrap:\s*wrap/m.test(out)],
   ['accountActions 无残留 nowrap', !/(?:^|\n)\.dim-jh-accountActions\s*\{[^}]*flex-wrap:\s*nowrap/m.test(out)],
+  // 积分行：要么已被我们加了 wrap（flex 方案），要么上游是 block+省略号（等价目标已达成）
+  [
+    '积分行不撑宽（wrap 或 block 省略号）',
+    /dd\.dim-jh-creditValue\s*\{[^}]*flex-wrap:\s*wrap/m.test(out)
+      || /dd\.dim-jh-creditValue\s*\{[^}]*display:\s*block[^}]*text-overflow:\s*ellipsis/m.test(out),
+  ],
 ]
 
 console.log(`本次应用 ${applied.length} 项，跳过（已满足）${skipped.length} 项`)
